@@ -1,0 +1,3 @@
+# Local WiFi credential headers (create your own copies next to each sketch)
+controller_skull_server/secrets.h
+trigger_sensor_client/secrets.h

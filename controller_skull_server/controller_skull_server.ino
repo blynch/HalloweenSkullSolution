@@ -19,9 +19,15 @@
 
 #include <WiFiS3.h>
 
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "No secrets.h found; using placeholder WiFi credentials"
+static const char WIFI_SSID[] = "YOUR_WIFI_SSID";
+static const char WIFI_PASS[] = "YOUR_WIFI_PASSWORD";
+#endif
+
 // ==== WiFi configuration =====================================================
-const char *WIFI_SSID = "YOUR_WIFI_SSID";
-const char *WIFI_PASS = "YOUR_WIFI_PASSWORD";
 const uint16_t WEB_PORT = 80;
 
 // ==== Pin configuration ======================================================
