@@ -21,9 +21,9 @@ This project coordinates two Arduino UNO R4 WiFi boards to animate three Hallowe
 | 5V / GND | 5V / GND | 5V / GND | Share grounds between modules |
 
 ### Firmware Setup
-1. Copy each `secrets.example.h` to `secrets.h` inside the matching folder. Add your WiFi SSID/password and keep those files local (they're listed in `.gitignore`).
+1. Copy each `secrets.example.h` to `secrets.h` inside the matching folder. Add your WiFi SSID/password, and set `CONTROLLER_HOST` in the trigger client’s secrets to the controller board IP/hostname. Keep these files local (they're listed in `.gitignore`).
 2. Open `controller_skull_server/controller_skull_server.ino` in the Arduino IDE, adjust pins/thresholds if your wiring differs, and upload to the UNO R4 WiFi that will host the relay.
-3. Open `trigger_sensor_client/trigger_sensor_client.ino`, point `CONTROLLER_HOST` at the first board’s IP (check the serial monitor after it boots), and upload to the second UNO R4 WiFi.
+3. Open `trigger_sensor_client/trigger_sensor_client.ino` and upload to the second UNO R4 WiFi.
 
 ### Operation
 - The controller exposes:

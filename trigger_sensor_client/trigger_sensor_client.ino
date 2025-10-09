@@ -20,12 +20,12 @@
 #warning "No secrets.h found; using placeholder WiFi credentials"
 static const char WIFI_SSID[] = "YOUR_WIFI_SSID";
 static const char WIFI_PASS[] = "YOUR_WIFI_PASSWORD";
+static const char CONTROLLER_HOST[] = "192.168.1.100";
 #endif
 
 // ==== WiFi credentials =======================================================
 
 // ==== Controller endpoint ====================================================
-const char *CONTROLLER_HOST = "192.168.1.100";  // Replace with controller IP or hostname
 const uint16_t CONTROLLER_PORT = 80;
 const unsigned long RETRIGGER_DELAY_MS = 15000; // Don't retrigger until this cooldown expires
 const unsigned long ACTIVATION_DURATION_MS = 8000;
@@ -58,7 +58,6 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  WiFi.lowPowerMode();
   ensureWifiConnected();
   logWifiStatus();
 }
