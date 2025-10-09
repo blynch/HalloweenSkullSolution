@@ -20,8 +20,8 @@
 #include <WiFiS3.h>
 
 // ==== WiFi configuration =====================================================
-const char *WIFI_SSID = "YOUR_WIFI_SSID";
-const char *WIFI_PASS = "YOUR_WIFI_PASSWORD";
+const char *WIFI_SSID = "Pynchon";
+const char *WIFI_PASS = "stumpjumper";
 const uint16_t WEB_PORT = 80;
 
 // ==== Pin configuration ======================================================
@@ -71,7 +71,6 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  WiFi.lowPowerMode();
   ensureWifiConnected();
   server.begin();
 
