@@ -18,6 +18,7 @@
 */
 
 #include <WiFiS3.h>
+#include <Arduino_LED_Matrix.h>
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -26,6 +27,23 @@
 static const char WIFI_SSID[] = "YOUR_WIFI_SSID";
 static const char WIFI_PASS[] = "YOUR_WIFI_PASSWORD";
 #endif
+
+ArduinoLEDMatrix skullMatrix;
+
+const uint8_t SKULL_BITMAP[8][12] = {
+  {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
+  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
+  {1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1},
+  {1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1},
+  {1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1},
+  {1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1},
+  {0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0},
+  {0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0}
+};
+
+void displayReadySkull() {
+  skullMatrix.renderBitmap(SKULL_BITMAP, 8, 12);
+}
 
 // ==== WiFi configuration =====================================================
 const uint16_t WEB_PORT = 80;
@@ -79,6 +97,9 @@ void setup() {
 
   ensureWifiConnected();
   server.begin();
+
+  skullMatrix.begin();
+  displayReadySkull();
 
   Serial.print("HTTP server started on http://");
   Serial.print(WiFi.localIP());

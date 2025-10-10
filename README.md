@@ -10,6 +10,7 @@ This project coordinates two Arduino UNO R4 WiFi boards to animate three Hallowe
 - `controller_skull_server/controller_skull_server.ino` – WiFi configuration, REST endpoint, relay control logic, and safety shutdown based on the local range sensor.
 - `trigger_sensor_client/trigger_sensor_client.ino` – WiFi client that measures distance and posts to the controller when someone passes by.
 - `controller_skull_server/secrets.example.h`, `trigger_sensor_client/secrets.example.h` – template headers you can copy to `secrets.h` for local WiFi credentials (kept out of git).
+- Both sketches light the UNO R4 WiFi LED matrix with a skull icon once they finish booting so you know each node is ready.
 
 ### Wiring Cheatsheet
 
