@@ -30,19 +30,44 @@ static const char WIFI_PASS[] = "YOUR_WIFI_PASSWORD";
 
 ArduinoLEDMatrix skullMatrix;
 
-const uint8_t SKULL_BITMAP[8][12] = {
+static const uint8_t SKULL_BITMAP_READY[8][12] = {
   {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0},
   {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
-  {1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1},
-  {1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1},
   {1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1},
-  {1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1},
-  {0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0},
-  {0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0}
+  {1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1},
+  {1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1},
+  {0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
+  {0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0},
+  {0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0}
 };
 
 void displayReadySkull() {
-  skullMatrix.renderBitmap(SKULL_BITMAP, 8, 12);
+  uint8_t rotated[8][12] = {};
+  const int srcRows = 8;
+  const int srcCols = 12;
+  const int destRows = 8;
+  const int destCols = 12;
+
+  for (int destRow = 0; destRow < destRows; ++destRow) {
+    const int yPrime = (destRow * (srcCols - 1) + ((destRows - 1) / 2)) / (destRows - 1);
+    for (int destCol = 0; destCol < destCols; ++destCol) {
+      const int xPrime = (destCol * (srcRows - 1) + ((destCols - 1) / 2)) / (destCols - 1);
+      const int srcRow = xPrime;
+      const int srcCol = (srcCols - 1) - yPrime;
+      rotated[destRow][destCol] = SKULL_BITMAP_READY[srcRow][srcCol];
+    }
+  }
+
+  skullMatrix.renderBitmap(rotated, destRows, destCols);
+}
+
+void flashSkull(uint8_t count, unsigned long intervalMs) {
+  for (uint8_t i = 0; i < count; ++i) {
+    skullMatrix.clear();
+    delay(intervalMs);
+    displayReadySkull();
+    delay(intervalMs);
+  }
 }
 
 // ==== WiFi configuration =====================================================
@@ -82,6 +107,8 @@ void turnRelayOn(unsigned long durationMs);
 void turnRelayOff();
 float readDistanceCm();
 unsigned long clampActivationDuration(long requestMs);
+IPAddress waitForLocalIp(unsigned long timeoutMs = 3000);
+void flashSkull(uint8_t count = 3, unsigned long intervalMs = 200);
 
 void setup() {
   Serial.begin(115200);
@@ -101,8 +128,9 @@ void setup() {
   skullMatrix.begin();
   displayReadySkull();
 
+  IPAddress ip = waitForLocalIp();
   Serial.print("HTTP server started on http://");
-  Serial.print(WiFi.localIP());
+  Serial.print(ip);
   Serial.print(":");
   Serial.println(WEB_PORT);
 }
@@ -161,8 +189,9 @@ void ensureWifiConnected() {
     delay(2000);
   }
 
-  Serial.print("Connected. IP: ");
-  Serial.println(WiFi.localIP());
+  IPAddress ip = waitForLocalIp();
+  Serial.print("Controller IP: ");
+  Serial.println(ip);
 }
 
 // ==== HTTP handling ===========================================================
@@ -189,6 +218,7 @@ void handleClient(WiFiClient &client) {
   String req(requestLine);
   Serial.print("HTTP request: ");
   Serial.println(req);
+  flashSkull();
 
   bool handled = false;
 
@@ -289,4 +319,14 @@ unsigned long clampActivationDuration(long requestMs) {
     return MAX_ACTIVATION_MS;
   }
   return (unsigned long)requestMs;
+}
+
+IPAddress waitForLocalIp(unsigned long timeoutMs) {
+  IPAddress ip = WiFi.localIP();
+  unsigned long start = millis();
+  while (ip == IPAddress(0, 0, 0, 0) && millis() - start < timeoutMs) {
+    delay(50);
+    ip = WiFi.localIP();
+  }
+  return ip;
 }
