@@ -88,12 +88,14 @@ const float SENSOR_MAX_DISTANCE_CM = 152.4f;
 const unsigned long DISTANCE_LOG_INTERVAL_MS = 1000;
 const unsigned long RELAY_PULSE_MS = 150;
 const unsigned long SKULL_SEQUENCE_MS = 15000;
+const uint8_t VISITOR_DETECTION_COUNT = 3;
 
 // ==== Globals =================================================================
 WiFiServer server(WEB_PORT);
 
 bool visitorPresent = false;
-unsigned long visitorClearAt = 0;
+unsigned long visitorLockUntil = 0;
+uint8_t visitorHits = 0;
 float lastDistanceCm = 400.0f;
 
 unsigned long lastSensorSampleAt = 0;
@@ -157,26 +159,38 @@ void loop() {
   if (now - lastSensorSampleAt >= SENSOR_SAMPLE_INTERVAL_MS) {
     lastSensorSampleAt = now;
     const float distance = readDistanceCm();
-    if (distance > 0) {
+    bool valid = distance > 0;
+    if (valid) {
       lastDistanceCm = distance;
-      if (now - lastDistanceLogAt >= DISTANCE_LOG_INTERVAL_MS) {
-        lastDistanceLogAt = now;
-        Serial.print("Sensor distance: ");
-        Serial.print(distance, 1);
-        Serial.println(" cm");
-      }
+    }
 
-      if (distance <= VISITOR_DISTANCE_CM) {
-        if (!visitorPresent) {
-          Serial.println("Visitor detected nearby – preparing to stop sequence");
-        }
+    if (now - lastDistanceLogAt >= DISTANCE_LOG_INTERVAL_MS) {
+      lastDistanceLogAt = now;
+      Serial.print("Sensor distance: ");
+      Serial.print(valid ? distance : -1, 1);
+      Serial.println(" cm");
+    }
+
+    bool withinRange = valid && distance <= VISITOR_DISTANCE_CM;
+
+    if (withinRange) {
+      if (visitorHits < 255) {
+        visitorHits++;
+      }
+      visitorLockUntil = now + VISITOR_COOLDOWN_MS;
+
+      if (!visitorPresent && visitorHits >= VISITOR_DETECTION_COUNT) {
         visitorPresent = true;
-        visitorClearAt = now + VISITOR_COOLDOWN_MS;
+        Serial.println("Visitor detected nearby – stopping sequence");
         if (sequenceActive) {
           stopSequence("Visitor proximity");
         }
-      } else if (visitorPresent && now >= visitorClearAt) {
+      }
+    } else {
+      visitorHits = 0;
+      if (visitorPresent && now >= visitorLockUntil) {
         visitorPresent = false;
+        Serial.println("Visitor cleared");
       }
     }
   }
