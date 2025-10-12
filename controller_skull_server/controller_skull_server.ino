@@ -74,7 +74,7 @@ void flashSkull(uint8_t count, unsigned long intervalMs) {
 const uint16_t WEB_PORT = 80;
 
 // ==== Pin configuration ======================================================
-const uint8_t RELAY_PIN = 5;
+const uint8_t RELAY_PIN = 9;
 const bool RELAY_ACTIVE_LEVEL = HIGH;   // Set to LOW if your relay is active-low
 const uint8_t TRIG_PIN = 6;
 const uint8_t ECHO_PIN = 7;
@@ -85,7 +85,10 @@ const unsigned long MIN_ACTIVATION_MS = 1000;
 const unsigned long MAX_ACTIVATION_MS = 30000;
 const unsigned long SENSOR_SAMPLE_INTERVAL_MS = 200;
 const unsigned long VISITOR_COOLDOWN_MS = 7000;     // Wait after a visitor leaves before reactivating
-const float VISITOR_DISTANCE_CM = 120.0f;           // Shut off relay when closer than this
+const float VISITOR_DISTANCE_CM = 100.0f;           // Shut off relay when closer than this
+const float SENSOR_MIN_DISTANCE_CM = 5.0f;
+const float SENSOR_MAX_DISTANCE_CM = 152.4f;
+const unsigned long DISTANCE_LOG_INTERVAL_MS = 1000;
 
 // ==== Globals =================================================================
 WiFiServer server(WEB_PORT);
@@ -98,6 +101,7 @@ unsigned long visitorClearAt = 0;
 float lastDistanceCm = 400.0f;
 
 unsigned long lastSensorSampleAt = 0;
+unsigned long lastDistanceLogAt = 0;
 
 // ==== Utility prototypes ======================================================
 void ensureWifiConnected();
@@ -156,6 +160,12 @@ void loop() {
     const float distance = readDistanceCm();
     if (distance > 0) {
       lastDistanceCm = distance;
+      if (now - lastDistanceLogAt >= DISTANCE_LOG_INTERVAL_MS) {
+        lastDistanceLogAt = now;
+        Serial.print("Sensor distance: ");
+        Serial.print(distance, 1);
+        Serial.println(" cm");
+      }
 
       if (distance <= VISITOR_DISTANCE_CM) {
         visitorPresent = true;
@@ -279,6 +289,9 @@ void sendHttpResponse(WiFiClient &client, int statusCode, const char *statusText
 
 // ==== Relay helpers ===========================================================
 void turnRelayOn(unsigned long durationMs) {
+  Serial.print("Relay ON signal (pin ");
+  Serial.print(RELAY_PIN);
+  Serial.println(") asserted");
   digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL);
   relayOn = true;
   relayOffAt = millis() + durationMs;
@@ -288,6 +301,9 @@ void turnRelayOn(unsigned long durationMs) {
 }
 
 void turnRelayOff() {
+  Serial.print("Relay OFF signal (pin ");
+  Serial.print(RELAY_PIN);
+  Serial.println(") asserted");
   digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL ? LOW : HIGH);
   relayOn = false;
   relayOffAt = 0;
