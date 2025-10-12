@@ -225,13 +225,15 @@ bool triggerController() {
     String line = client.readStringUntil('\n');
     if (line.startsWith("HTTP/1.1")) {
       statusCode = line.substring(9, 12).toInt();
-      success = (statusCode == 200 || statusCode == 202 || statusCode == 423);
+      success = (statusCode == 200 || statusCode == 202 || statusCode == 409 || statusCode == 423);
     }
   }
 
   client.stop();
   if (statusCode == 423) {
     Serial.println("Controller busy (visitor nearby); using cooldown");
+  } else if (statusCode == 409) {
+    Serial.println("Controller already running; skipping retrigger");
   } else if (statusCode == 0) {
     // No response parsed; assume request was accepted to avoid rapid retries
     success = true;

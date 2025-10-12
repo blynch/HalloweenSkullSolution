@@ -75,26 +75,22 @@ const uint16_t WEB_PORT = 80;
 
 // ==== Pin configuration ======================================================
 const uint8_t RELAY_PIN = 9;
-const bool RELAY_ACTIVE_LEVEL = HIGH;   // Set to LOW if your relay is active-low
+const bool RELAY_ACTIVE_LEVEL = HIGH;   // Relay FeatherWing is active-high
 const uint8_t TRIG_PIN = 6;
 const uint8_t ECHO_PIN = 7;
 
 // ==== Timing and behaviour ===================================================
-const unsigned long DEFAULT_ACTIVATION_MS = 8000;   // Relay on time when /activate is called
-const unsigned long MIN_ACTIVATION_MS = 1000;
-const unsigned long MAX_ACTIVATION_MS = 30000;
 const unsigned long SENSOR_SAMPLE_INTERVAL_MS = 200;
 const unsigned long VISITOR_COOLDOWN_MS = 7000;     // Wait after a visitor leaves before reactivating
 const float VISITOR_DISTANCE_CM = 100.0f;           // Shut off relay when closer than this
 const float SENSOR_MIN_DISTANCE_CM = 5.0f;
 const float SENSOR_MAX_DISTANCE_CM = 152.4f;
 const unsigned long DISTANCE_LOG_INTERVAL_MS = 1000;
+const unsigned long RELAY_PULSE_MS = 150;
+const unsigned long SKULL_SEQUENCE_MS = 15000;
 
 // ==== Globals =================================================================
 WiFiServer server(WEB_PORT);
-
-bool relayOn = false;
-unsigned long relayOffAt = 0;
 
 bool visitorPresent = false;
 unsigned long visitorClearAt = 0;
@@ -102,15 +98,17 @@ float lastDistanceCm = 400.0f;
 
 unsigned long lastSensorSampleAt = 0;
 unsigned long lastDistanceLogAt = 0;
+bool sequenceActive = false;
+unsigned long sequenceEndAt = 0;
 
 // ==== Utility prototypes ======================================================
 void ensureWifiConnected();
 void handleClient(WiFiClient &client);
 void sendHttpResponse(WiFiClient &client, int statusCode, const char *statusText, const char *body);
-void turnRelayOn(unsigned long durationMs);
-void turnRelayOff();
+void pulseRelay(const char *reason = nullptr);
+void startSequence(const char *source);
+void stopSequence(const char *source);
 float readDistanceCm();
-unsigned long clampActivationDuration(long requestMs);
 IPAddress waitForLocalIp(unsigned long timeoutMs = 3000);
 void flashSkull(uint8_t count = 3, unsigned long intervalMs = 200);
 
@@ -121,7 +119,7 @@ void setup() {
   }
 
   pinMode(RELAY_PIN, OUTPUT);
-  turnRelayOff();
+  digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL ? LOW : HIGH);
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
@@ -150,9 +148,10 @@ void loop() {
 
   const unsigned long now = millis();
 
-  if (relayOn && now >= relayOffAt) {
-    Serial.println("Relay timeout reached, turning off");
-    turnRelayOff();
+  if (sequenceActive && now >= sequenceEndAt) {
+    sequenceActive = false;
+    sequenceEndAt = 0;
+    Serial.println("Skull sequence completed (auto timeout)");
   }
 
   if (now - lastSensorSampleAt >= SENSOR_SAMPLE_INTERVAL_MS) {
@@ -168,11 +167,13 @@ void loop() {
       }
 
       if (distance <= VISITOR_DISTANCE_CM) {
+        if (!visitorPresent) {
+          Serial.println("Visitor detected nearby – preparing to stop sequence");
+        }
         visitorPresent = true;
         visitorClearAt = now + VISITOR_COOLDOWN_MS;
-        if (relayOn) {
-          Serial.println("Visitor detected nearby – relay forced off");
-          turnRelayOff();
+        if (sequenceActive) {
+          stopSequence("Visitor proximity");
         }
       } else if (visitorPresent && now >= visitorClearAt) {
         visitorPresent = false;
@@ -231,39 +232,38 @@ void handleClient(WiFiClient &client) {
   flashSkull();
 
   bool handled = false;
+  const unsigned long now = millis();
 
   if (req.startsWith("POST /activate")) {
-    long duration = DEFAULT_ACTIVATION_MS;
-
-    int qsIndex = req.indexOf("duration=");
-    if (qsIndex >= 0) {
-      duration = req.substring(qsIndex + 9).toInt();
-    }
-
-    duration = clampActivationDuration(duration);
-
     if (visitorPresent) {
       sendHttpResponse(client, 423, "Locked", "{\"status\":\"visitor-nearby\"}");
-    } else if (relayOn) {
-      relayOffAt = millis() + duration;
-      sendHttpResponse(client, 202, "Accepted", "{\"status\":\"extended\"}");
+    } else if (sequenceActive) {
+      sendHttpResponse(client, 409, "Conflict", "{\"status\":\"already-running\"}");
     } else {
-      turnRelayOn(duration);
+      startSequence("HTTP /activate");
       sendHttpResponse(client, 200, "OK", "{\"status\":\"activated\"}");
     }
     handled = true;
   } else if (req.startsWith("POST /deactivate")) {
-    turnRelayOff();
-    sendHttpResponse(client, 200, "OK", "{\"status\":\"deactivated\"}");
+    if (sequenceActive) {
+      stopSequence("HTTP /deactivate");
+      sendHttpResponse(client, 200, "OK", "{\"status\":\"stopped\"}");
+    } else {
+      sendHttpResponse(client, 200, "OK", "{\"status\":\"idle\"}");
+    }
     handled = true;
   } else if (req.startsWith("GET /status")) {
     char body[160];
+    long remaining = 0;
+    if (sequenceActive && sequenceEndAt > now) {
+      remaining = (long)(sequenceEndAt - now);
+    }
     snprintf(body, sizeof(body),
-             "{\"relay\":%s,\"visitor\":%s,\"distance_cm\":%.1f,\"timeout_ms\":%ld}",
-             relayOn ? "true" : "false",
+             "{\"sequence\":%s,\"visitor\":%s,\"distance_cm\":%.1f,\"remaining_ms\":%ld}",
+             sequenceActive ? "true" : "false",
              visitorPresent ? "true" : "false",
              lastDistanceCm,
-             relayOn ? (long)(relayOffAt - millis()) : 0L);
+             remaining);
 
     sendHttpResponse(client, 200, "OK", body);
     handled = true;
@@ -288,26 +288,38 @@ void sendHttpResponse(WiFiClient &client, int statusCode, const char *statusText
 }
 
 // ==== Relay helpers ===========================================================
-void turnRelayOn(unsigned long durationMs) {
-  Serial.print("Relay ON signal (pin ");
+void pulseRelay(const char *reason) {
+  if (reason) {
+    Serial.print("Relay pulse requested: ");
+    Serial.println(reason);
+  }
+  Serial.print("Relay pulse (pin ");
   Serial.print(RELAY_PIN);
-  Serial.println(") asserted");
+  Serial.println(") active");
   digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL);
-  relayOn = true;
-  relayOffAt = millis() + durationMs;
-  Serial.print("Relay ON for ");
-  Serial.print(durationMs);
-  Serial.println(" ms");
+  delay(RELAY_PULSE_MS);
+  digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL ? LOW : HIGH);
+  Serial.println("Relay pulse complete");
 }
 
-void turnRelayOff() {
-  Serial.print("Relay OFF signal (pin ");
-  Serial.print(RELAY_PIN);
-  Serial.println(") asserted");
-  digitalWrite(RELAY_PIN, RELAY_ACTIVE_LEVEL ? LOW : HIGH);
-  relayOn = false;
-  relayOffAt = 0;
-  Serial.println("Relay OFF");
+void startSequence(const char *source) {
+  if (sequenceActive) {
+    return;
+  }
+  pulseRelay(source ? source : "start");
+  sequenceActive = true;
+  sequenceEndAt = millis() + SKULL_SEQUENCE_MS;
+  Serial.println("Skull sequence marked active");
+}
+
+void stopSequence(const char *source) {
+  if (!sequenceActive) {
+    return;
+  }
+  pulseRelay(source ? source : "stop");
+  sequenceActive = false;
+  sequenceEndAt = 0;
+  Serial.println("Skull sequence marked inactive");
 }
 
 // ==== Sensor helpers ==========================================================
@@ -324,17 +336,10 @@ float readDistanceCm() {
   }
 
   float distance = (duration / 2.0f) * 0.0343f; // Speed of sound 343 m/s
+  if (distance < SENSOR_MIN_DISTANCE_CM || distance > SENSOR_MAX_DISTANCE_CM) {
+    return -1.0f;
+  }
   return distance;
-}
-
-unsigned long clampActivationDuration(long requestMs) {
-  if (requestMs < (long)MIN_ACTIVATION_MS) {
-    return MIN_ACTIVATION_MS;
-  }
-  if (requestMs > (long)MAX_ACTIVATION_MS) {
-    return MAX_ACTIVATION_MS;
-  }
-  return (unsigned long)requestMs;
 }
 
 IPAddress waitForLocalIp(unsigned long timeoutMs) {
