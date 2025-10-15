@@ -80,7 +80,7 @@ const uint8_t TRIG_PIN = 6;
 const uint8_t ECHO_PIN = 7;
 const float DETECTION_DISTANCE_CM = 100.0f;  // Trigger when closer than this
 const float MIN_VALID_DISTANCE_CM = 5.0f;
-const float MAX_VALID_DISTANCE_CM = 152.4f;
+const float MAX_VALID_DISTANCE_CM = 137.2f;
 const uint8_t DETECTION_CONSISTENCY_COUNT = 5;  // Require N hits before triggering
 const unsigned long SENSOR_SAMPLE_INTERVAL_MS = 120;
 
